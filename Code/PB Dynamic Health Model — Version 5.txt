@@ -1,0 +1,302 @@
+# PB Dynamic Health Model — Version 5
+
+This repository contains a Python implementation of the **PB-based dynamic health model** (aligned with `model_v4.tex`), including:
+
+- **Observed-series layer** (baseline, log-normalization, ratios, smoothed log-drift, early-instability index),
+- **Phase classification** (simple PB “Health / EarlyDrift” phases from ratio windows),
+- **Latent dynamic model** in log-space with phase-dependent drift and noise,
+- Optional **4D PB Prevention Core** (axes I / M / C / B, potential \(V\), gradient \(\nabla V\), and simple intervention rule),
+- Command-line interface suitable for **non-programmers**: inputs are given as comma-separated lists; outputs are written as CSV files and PNG plots.
+
+The main script is:
+
+```bash
+pb_model_v5.py
+```
+## 1. Requirements
+
+- Python 3.9+ (3.10/3.11 are fine)
+- Python packages:
+  - `numpy`
+  - `matplotlib`
+
+Install dependencies:
+
+```bash
+pip install numpy matplotlib
+```
+## 2. Files and Structure
+
+**`pb_model_v5.py`** — main script and all model classes:
+
+- `ObservedSeries`
+- `PBPhaseModel`
+- `SingleAxisLatentModel`
+- `ObservationModel`
+- `PBPreventionCore`
+- CLI entrypoint: `main()`
+
+When you run the script, it will create an output folder (default: `outputs/`) that contains:
+
+- `timeseries.csv`
+- *(optional)* `pb_core.csv`
+- `plot_y.png`
+- `plot_z.png`
+- `plot_phase.png`
+- *(optional)* `plot_V.png`
+- *(optional)* `plot_gradV.png`
+
+---
+
+## 3. Conceptual Overview
+
+At a high level, the script does the following:
+
+- Takes a 1D time series of a biomarker or risk score \( y_n \) at time points \( t_n \).
+- Computes a personal baseline from user-specified “healthy” indices and works in log-normalized space \( z_n \).
+- Derives local ratios and drifts:
+  - Single-step ratios \( r_n \)
+  - Log differences \( \ell_n \)
+  - Smoothed log-drift \( \tilde{\ell}_n \)
+  - Early-instability index `EI_n`
+- Classifies local phases (“Health” vs “EarlyDrift”) based on a PB-style ratio-window likelihood.
+- Uses the phase sequence to simulate a latent process \( z_n \) with phase-dependent drift and process noise.
+- Optionally runs a 4D PB Prevention Core:
+  - Constructs four latent axes (I, M, C, B),
+  - Builds a potential \( V_n \),
+  - Computes gradient \( \nabla V_n \),
+  - Applies a simple intervention rule that nudges the I-axis when \( V \) is increasing.
+- Saves all numeric outputs to CSV and visual summaries to PNG plots.
+
+---
+
+## 4. Quick Start
+
+Place `pb_model_v5.py` in your repository and run it from the command line.
+
+### Example: Minimal run
+
+```bash
+python pb_model_v5.py \
+  --times  "0,1,2,3,4,5" \
+  --values "1.0,0.97,1.02,1.15,1.30,1.45" \
+  --healthy "0,1,2" \
+  --outdir "outputs_v5_example"
+```
+This will:
+
+- Use 6 time points  
+  `t = [0, 1, 2, 3, 4, 5]`
+- Use 6 biomarker values  
+  `y = [1.00, 0.97, 1.02, 1.15, 1.30, 1.45]`
+- Treat indices `[0, 1, 2]` as clearly healthy for the baseline.
+- Write all outputs into `outputs_v5_example/`.
+
+---
+
+### Example: With PB Prevention Core enabled
+
+```bash
+python pb_model_v5.py \
+  --times  "0,1,2,3,4,5" \
+  --values "1.0,0.97,1.02,1.15,1.30,1.45" \
+  --healthy "0,1,2" \
+  --use_prevention_core \
+  --k_gain 0.5 \
+  --outdir "outputs_v5_pbcore"
+```
+This additionally runs the 4D PB Prevention Core and produces `pb_core.csv` and extra plots.
+
+---
+
+## 5. Command-Line Arguments
+
+All arguments are passed as `--flag value`. The most important ones:
+
+### Required
+
+#### `--times`
+
+Comma-separated time points (must be strictly increasing).
+
+Example:
+
+```bash
+--times "0,1,2,3,4,5"
+```
+### Command-line Arguments (continued)
+
+#### `--values`
+
+Comma-separated biomarker values (same length as `--times`, all positive).
+
+Example:
+
+```bash
+--values "1.0,0.97,1.02,1.15,1.30,1.45"
+```
+### Baseline / Healthy Window
+
+`--healthy` (optional, default `"0,1,2"`)
+
+Comma-separated integer indices indicating the “healthy” baseline window.
+
+**Example:**
+
+```bash
+--healthy "0,1,2"
+```
+The baseline `y_base` is computed as the mean of `y[healthy_indices]`.
+
+---
+
+## Early-Instability and Smoothing
+
+- `--r_band_low` (float, default `1.27`)  
+  Lower bound of the “early drift” ratio band.
+
+- `--r_band_high` (float, default `1.40`)  
+  Upper bound of the “early drift” ratio band.
+
+- `--window` (int, default `3`)  
+  Window size used for:
+  - smoothing the log-ratio drift, and  
+  - computing the early-instability index `EI`.
+
+- `--theta_H` (float, default `0.5`)  
+  Threshold on \(|z|\) for exit from the health basin.
+
+---
+
+## Observation Noise & Baseline Prior
+
+- `--sigma_meas` (float, default `0.05`)  
+  Measurement noise standard deviation in log-space.
+
+- `--mu_c` (float, default `0.0`)  
+  Prior mean for the log-baseline parameter `c`.
+
+- `--sigma_c` (float, default `0.2`)  
+  Prior standard deviation for `c`.
+
+---
+
+## PB Prevention Core
+
+- `--use_prevention_core` (flag, no value)  
+  If present, enables the 4D PB Prevention Core.
+
+- `--k_gain` (float, default `0.5`)  
+  Gain parameter `k` controlling how strongly the I-axis is nudged when the PB potential \(V\) is increasing.
+
+---
+
+## Output Folder
+
+- `--outdir` (string, default `"outputs"`)  
+  Output directory for CSVs and plots. It will be created if it does not exist.
+
+---
+
+## 6. Outputs
+
+### 6.1 `timeseries.csv`
+
+Saved in `--outdir`. Columns:
+
+- `t` — time points  
+- `y` — observed biomarker  
+- `z_obs` — log-normalized series (using estimated `c = log(y_base)`)  
+- `r` — step ratios (length `N`, padded with `NaN` at the last row)  
+- `ell` — log differences (`z[n+1] - z[n]`, padded with `NaN`)  
+- `ell_smooth` — smoothed log-drift (padded with `NaN`)  
+- `EI` — early-instability index (padded with `NaN`)  
+- `phase_idx` — estimated phase index:
+  - `0` → `"Health"`
+  - `1` → `"EarlyDrift"`  
+- `z_sim` — simulated latent trajectory (from phase-dependent drift + noise)  
+- `y_sim` — synthetic observed values from the observation model  
+
+### 6.2 `pb_core.csv` (if `--use_prevention_core`)
+
+Columns:
+
+- `t` — time points  
+- `V_before` — PB potential *before* intervention  
+- `V_after` — PB potential *after* intervention  
+- `grad_V_before` — gradient of \(V\) before intervention  
+- `delta_P` — scalar intervention “pressure” proportional to \(k \cdot \nabla V\)  
+- `delta_Z_I` — intervention on I-axis  
+- `delta_Z_M` — intervention on M-axis (zero in this simple example)  
+- `delta_Z_C` — intervention on C-axis (zero)  
+- `delta_Z_B` — intervention on B-axis (zero)  
+
+The PB axes (I, M, C, B) are derived from `y` by simple linear/nonlinear transforms **just for demonstration**.  
+In a real application, you would replace this with your own PB axis definitions per patient.
+
+---
+
+## 7. Plots
+
+All plots are saved as PNG in `--outdir`:
+
+- `plot_y.png`  
+  Time series of the observed biomarker \(y(t)\).
+
+- `plot_z.png`  
+  - `z_obs`: log-normalized observed series  
+  - `z_sim`: simulated latent trajectory  
+
+- `plot_phase.png`  
+  Step function of `phase_idx(t)` with `where="post"`, so that the value on  
+  \([t_i, t_{i+1}]\) corresponds to the inferred phase for step `i`.
+
+If `--use_prevention_core` is enabled:
+
+- `plot_V.png`  
+  `V_before(t)` and `V_after(t)` (PB potential before/after intervention).
+
+- `plot_gradV.png`  
+  `grad_V_before(t)` (discrete gradient of PB potential).
+
+---
+
+## 8. Typical Workflow
+
+1. **Prepare your series:**
+   - Decide on time points (e.g. visits in months or years),  
+   - Gather the corresponding biomarker or PB score values,  
+   - Identify which subset of points clearly represents a “healthy” baseline.
+
+2. **Run the script** with those `--times`, `--values`, and `--healthy` indices.
+
+3. **Inspect `timeseries.csv`:**
+   - Check `z_obs`, `r`, `ell_smooth`, `EI`, and `phase_idx`.  
+   - Use plots (`plot_y.png`, `plot_z.png`, `plot_phase.png`) as visual summaries.
+
+4. **If you care about multi-axis PB:**
+   - Enable `--use_prevention_core`,  
+   - Look at `pb_core.csv`, `plot_V.png`, and `plot_gradV.png` to see where and how interventions would “push back” against increasing risk.
+
+---
+
+## 9. Notes and Extensions
+
+- The current phase classifier is a **simple per-step likelihood classifier** (no full forward–backward HMM yet). It is intentionally minimal and transparent.  
+- Process noise (`sigma_proc`) and the transition matrix `P` are currently hard-coded but can easily be made configurable.  
+- The PB Prevention Core uses a **single-axis intervention on I**; more complex multi-axis strategies can be added on top of this skeleton.
+
+---
+
+## 10. License and Citation
+
+**License**  
+This repository is provided as a **research and educational** case study.
+
+- Use is limited to **personal, academic, and non-commercial** purposes.  
+- Do **not** use this code as-is in clinical, diagnostic, or commercial products.  
+- Redistribution of modified or unmodified versions is **not permitted** without explicit written permission from the author.  
+
+If you are interested in collaboration, extended access, or using this work under a specific agreement, please contact the author directly.
+**Citation**  
+If you use this code in academic work, please consider citing the corresponding theoretical manuscript (`model_v4` / PB framework) once it is published. You can add BibTeX or citation details here when available.
