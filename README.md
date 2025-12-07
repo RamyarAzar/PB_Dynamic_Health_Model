@@ -1,9 +1,9 @@
-# PB Dynamic Health Model (PB-DHM)
+# PB-Inspired Dynamic Health Model (demo)
 
 **Author:** Ramyar  Azar
 **Last updated:** December 6, 2025  
 
-This repository contains a working Python implementation of a PB-based dynamic health model for **a single longitudinal biomarker or risk score**, with an optional **4D “prevention core”** that organizes risk into four latent axes and applies a simple intervention rule.
+This repository contains a working Python implementation of a PB-inspired dynamic health model demo for **a single longitudinal biomarker or risk score**, with an optional **4D “prevention core”** that organizes risk into four latent axes and applies a simple intervention rule.
 
 The code here is the same core used in a private case study and is shared **only as a generic methodological demo**. It does **not** expose any proprietary 7-axis designs or third-party intellectual property. The naming “PB” is used in a generic, abstract sense and is not tied to any external brand or framework.
 
